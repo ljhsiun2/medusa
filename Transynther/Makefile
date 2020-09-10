@@ -1,7 +1,7 @@
-CC                   = gcc
-AS                   = gcc
-LD                   = gcc
-CFLAGS              += -D_GNU_SOURCE -DNO_TSX=1 -O0
+CC                   = aarch64-linux-gnu-gcc
+AS                   = aarch64-linux-gnu-gcc
+LD                   = aarch64-linux-gnu-gcc
+CFLAGS              += -D_GNU_SOURCE -O0
 INCLUDE              = -I.
 LDFLAGS             += $(SUBDIRS:%=-L %) -lpthread
 

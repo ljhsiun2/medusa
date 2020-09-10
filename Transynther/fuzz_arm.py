@@ -73,21 +73,37 @@ class MemAddress(object):
 
 class ContextAllocator(object):
     int_regs = {
-        "rax": ["rax", "eax", "ax", "ah", "al"],
-        "rbx": ["rbx", "ebx", "bx", "bh", "bl"],
-        "rcx": ["rcx", "ecx", "cx", "ch", "cl"],
-        "rdx": ["rdx", "edx", "dx", "dh", "dl"],
-        "rsi": ["rsi", "esi", "si", 0, 0],
-        "rdi": ["rdi", "edi", "di", 0, 0],
-        "rbp": ["rbp", "ebp", "bp", 0, 0],
-        "r8":  ["r8",  "r8d",  "r8w",  0, "r8b"],
-        "r9":  ["r9",  "r9d",  "r9w",  0, "r9b"],
-        "r10": ["r10", "r10d", "r10w", 0, "r10b"],
-        "r11": ["r11", "r11d", "r11w", 0, "r11b"],
-        "r12": ["r12", "r12d", "r12w", 0, "r12b"],
-        "r13": ["r13", "r13d", "r13w", 0, "r13b"],
-        "r14": ["r14", "r14d", "r14w", 0, "r14b"],
-        "r15": ["r15", "r15d", "r15w", 0, "r15b"],
+        "x0": ["x0", "d0", "s0", "h0", "b0"],
+        "x1": ["x1", "d1", "s1", "h1", "b1"],
+        "x2": ["x2", "d2", "s2", "h2", "b2"],
+        "x3": ["x3", "d3", "s3", "h3", "b3"],
+        "x4": ["x4", "d4", "s4", "h4", "b4"],
+        "x5": ["x5", "d5", "s5", "h5", "b5"],
+        "x6": ["x6", "d6", "s6", "h6", "b6"],
+        "x7": ["x7", "d7", "s7", "h7", "b7"],
+        "x8": ["x8", "d8", "s8", "h8", "b8"],
+        "x9": ["x9", "d9", "s9", "h9", "b9"],
+        "x10": ["x10", "d10", "s10", "h10", "b10"],
+        "x11": ["x11", "d11", "s11", "h11", "b11"],
+        "x12": ["x12", "d12", "s12", "h12", "b12"],
+        "x13": ["x13", "d13", "s13", "h13", "b13"],
+        "x14": ["x14", "d14", "s14", "h14", "b14"],
+        "x15": ["x15", "d15", "s15", "h15", "b15"],
+        "x16": ["x16", "d16", "s16", "h16", "b16"],
+        "x17": ["x17", "d17", "s17", "h17", "b17"],
+        "x18": ["x18", "d18", "s18", "h18", "b18"],
+        "x19": ["x19", "d19", "s19", "h19", "b19"],
+        "x20": ["x20", "d20", "s20", "h20", "b20"],
+        "x21": ["x21", "d21", "s21", "h21", "b21"],
+        "x22": ["x22", "d22", "s22", "h22", "b22"],
+        "x23": ["x23", "d23", "s23", "h23", "b23"],
+        "x24": ["x24", "d24", "s24", "h24", "b24"],
+        "x25": ["x25", "d25", "s25", "h25", "b25"],
+        "x26": ["x26", "d26", "s26", "h26", "b26"],
+        "x27": ["x27", "d27", "s27", "h27", "b27"],
+        "x28": ["x28", "d28", "s28", "h28", "b28"],
+        "x29": ["x29", "d29", "s29", "h29", "b29"],
+        "x30": ["x30", "d30", "s30", "h30", "b30"],
     }
 
     def __init__(self, rChooser):
@@ -103,17 +119,15 @@ class ContextAllocator(object):
             'touched' : {}
         }
 
-        for i in range(8):
-            self.fp['freelist'].update({'st%s'%i: ["st%s"%i]})
-
         self.vector = {
             'freelist' : {},
             'allocated' : {},
             'touched' : {}
         }
 
-        for i in range(8):
-            self.vector['freelist'].update({'zmm%s'%i: ["zmm%s"%i, "ymm%s"%i, "xmm%s"%i, "mm%s"%i]})
+        for i in range(32):
+            self.vector['freelist'].update({'v%s'%i: ["v%s"%i, "q%s"%i, "d%s"%i, "s%s"%i, "h%s"%i, "b%s"%i]})
+            self.fp['freelist'].update({'v%s'%i: ["v%s"%i, "q%s"%i, "d%s"%i, "s%s"%i, "h%s"%i, "b%s"%i]})
 
     def alloc_repmov(self):
         for reg in ["rcx", "rsi", "rdi"]:
@@ -452,7 +466,7 @@ class TransUtil(object):
     def encode_to_oracle(regAlloc, dataReg, iStream):
         oracleReg = regAlloc.random_int()
         x = iStream
-        x += "lea oracles, %%%s\n"%(oracleReg[0])
+        x += f"adrl {oracleReg[0]}, oracles\n"
         x += "and $0xff, %%%s\n"%(dataReg[0])
         x += "shlq $12, %%%s\n"%(dataReg[0])
         x += "mov (%%%s,%%%s,1), %%%s\n"%(oracleReg[0], dataReg[0], dataReg[0])
