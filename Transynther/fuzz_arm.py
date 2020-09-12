@@ -129,20 +129,17 @@ class ContextAllocator(object):
             self.vector['freelist'].update({'v%s'%i: ["v%s"%i, "q%s"%i, "d%s"%i, "s%s"%i, "h%s"%i, "b%s"%i]})
             self.fp['freelist'].update({'v%s'%i: ["v%s"%i, "q%s"%i, "d%s"%i, "s%s"%i, "h%s"%i, "b%s"%i]})
 
-    def alloc_repmov(self):
-        for reg in ["rcx", "rsi", "rdi"]:
-            self.alloc_int(reg)
 
     def get_int_save_stub(self, istream):
         x = istream
         for reg in sorted(self.int['touched']):
-            x += "push %%%s\n"%(reg)
+            x += f"push {{reg}}\n"
         return x
 
     def get_int_restore_stub(self, istream):
         x = istream
         for reg in sorted(self.int['touched'], reverse=True):
-            x += "pop %%%s\n"%(reg)
+            x += f"pop {{reg}}\n"
         return x
 
 
@@ -352,24 +349,10 @@ class MemInstruction(object):
 
         return x
 
-    def gen_repmov(self, n, size, stream):
-        x = stream
-        x += "mov $%s, %%rcx\n"%(n)
-        x += "rep movs"
-        if size == 1:
-            x += "b"
-        elif size == 2:
-            x += "w"
-        elif size == 4:
-            x += "l"
-        elif size >= 8:
-            x += "q"
-        x += "\n"
-        return x
 
     def gen_flush(self, intAddr, stream):
         x = stream
-        x += "clflush (%%%s)\n"%(intAddr[0])
+        x += f"MCR p15, 0, {intAddr[0]}, c7, c6, 1\n"
         return x
 
 
@@ -467,16 +450,16 @@ class TransUtil(object):
         oracleReg = regAlloc.random_int()
         x = iStream
         x += f"adrl {oracleReg[0]}, oracles\n"
-        x += "and $0xff, %%%s\n"%(dataReg[0])
-        x += "shlq $12, %%%s\n"%(dataReg[0])
-        x += "mov (%%%s,%%%s,1), %%%s\n"%(oracleReg[0], dataReg[0], dataReg[0])
+        x += f"and {dataReg[0]}, #0xff\n"
+        x += f"lsl {dataReg[0]} $12\n"
+        x += f"ldr {dataReg[0]}, [{oracleReg[0]}, {dataReg[0]}]\n"
         regAlloc.free_int(oracleReg)
         return x
 
     @staticmethod
     def comment(c, iStream):
         x = iStream
-        x += "\n// %s\n"%c
+        x += "\n@ %s\n"%c
         return x
 
     @staticmethod
@@ -498,49 +481,6 @@ class TransUtil(object):
         arbInst = ArbitraryInstruction(arbReg, rChooser)
         regAlloc.free_int(arbReg)
         return arbInst.pick_exception(iStream)
-
-
-    @staticmethod
-    def rep_mov(safe, regAlloc, rChooser, memInst, iStream, ref=None, ht=False):
-        regAlloc.alloc_repmov()
-        srcReg = regAlloc.int['allocated']['rsi']
-        dstReg = regAlloc.int['allocated']['rdi']
-        countReg = regAlloc.int['allocated']['rcx']
-        repmovN = rChooser.pick_n(128)
-        repmovSize = rChooser.pick_memsize_int()
-        srcAddrSame = rChooser.chance(Config.Singleton().CHANCE_SAME_ADDR)
-        srcAddr = rChooser.pick_address(ref, safe=safe, same=srcAddrSame, ht=ht)
-        srcAddrClflush = rChooser.chance(Config.Singleton().CHANCE_CLFLUSH)
-        dstAddrSame = rChooser.chance(Config.Singleton().CHANCE_SAME_ADDR)
-        dstAddr = rChooser.pick_address(ref, safe=safe, same=dstAddrSame, ht=ht)
-        dstAddrClflush = rChooser.chance(Config.Singleton().CHANCE_CLFLUSH)
-        iStream = srcAddr.gen(srcReg, iStream)
-        iStream = dstAddr.gen(dstReg, iStream)
-        iStream = memInst.gen_flush(srcReg, iStream) if srcAddrClflush else iStream
-        iStream = memInst.gen_flush(dstReg, iStream) if dstAddrClflush else iStream
-        iStream = TransUtil.arbitrary_instruction(regAlloc, rChooser, iStream)
-        iStream = memInst.gen_repmov(repmovN, repmovSize, iStream)
-        regAlloc.free_int(srcReg)
-        regAlloc.free_int(dstReg)
-        regAlloc.free_int(countReg)
-
-        dlog = {
-            "OP": "REPM",
-            "src": {
-                "type": srcAddr.type,
-                "congruent": srcAddr.congruent,
-                "same": srcAddrSame
-            },
-            "dst": {
-                "type": dstAddr.type,
-                "congruent": dstAddr.congruent,
-                "same": dstAddrSame
-            },
-
-        }
-        Logger.Singleton().log(str(dlog))
-
-        return iStream
 
     @staticmethod
     def store(safe, regAlloc, rChooser, memInst, iStream, ref=None, ht=False):
@@ -633,16 +573,13 @@ s_prepare_buffers:
     memInst = MemInstruction(data=0x61)
 
     for _ in range(rChooser.pick_n(Config.Singleton().MAX_PREP_B_M)):
-        MemOpType = ['LOAD', 'STORE', 'REPMOV']
+        MemOpType = ['LOAD', 'STORE']
         memOp = rChooser.pick_one(MemOpType)
 
         if memOp == 'LOAD':
             iStream, _, _ = TransUtil.load(True, regAlloc, rChooser, memInst, iStream, ld, ht=True)
         elif memOp == 'STORE':
             iStream = TransUtil.store(True, regAlloc, rChooser, memInst, iStream, ld, ht=True)
-        elif memOp == 'REPMOV':
-            None
-            iStream = TransUtil.rep_mov(True, regAlloc, rChooser, memInst, iStream, ld, ht=True)
 
         iStream = TransUtil.arbitrary_instruction(regAlloc, rChooser, iStream)
 
@@ -667,7 +604,7 @@ s_faulty_load:
     _, _, loadAddrRef = TransUtil.load(False, regAlloc, rChooser, memInst, "")
 
     for _ in range(rChooser.pick_n(Config.Singleton().MAX_FAUL_B_M)):
-        MemOpType = ['LOAD', 'REPMOV', 'STORE', 'STORE', 'STORE', 'STORE']
+        MemOpType = ['LOAD', 'STORE', 'STORE', 'STORE', 'STORE']
         memOp = rChooser.pick_one(MemOpType)
 
         if memOp == 'LOAD':
@@ -676,9 +613,6 @@ s_faulty_load:
         elif memOp == 'STORE':
             iStream = TransUtil.comment("Store", iStream)
             iStream = TransUtil.store(rChooser.chance(Config.Singleton().CHANCE_EARLY_MEM_FAULT), regAlloc, rChooser, memInst, iStream, loadAddrRef)
-        elif memOp == 'REPMOV':
-            iStream = TransUtil.comment("REPMOV", iStream)
-            iStream = TransUtil.rep_mov(rChooser.chance(Config.Singleton().CHANCE_EARLY_MEM_FAULT), regAlloc, rChooser, memInst, iStream, loadAddrRef)
 
         if rChooser.chance(Config.Singleton().CHANCE_AUX_EX):
             iStream = TransUtil.comment("Exception!!!", iStream)
@@ -696,7 +630,7 @@ s_faulty_load:
     return iStream, loadAddrRef
 
 def generate():
-    asm_file = open('autogen.S', 'w+')
+    asm_file = open('autogen_arm.S', 'w+')
     code, ld = gen_faulty_load()
     asm_file.write(gen_prepare_buffer(ld))
     asm_file.write(code)

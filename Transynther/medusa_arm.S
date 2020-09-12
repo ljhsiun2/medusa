@@ -2,7 +2,7 @@
     .data
 
     .global oracles
-.align 0x1000
+.align 12
 oracles:
     .space 4096*256, 0
 
